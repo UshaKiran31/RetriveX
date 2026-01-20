@@ -246,6 +246,8 @@ flowchart LR
 
 ---
 
+##  Architecture ### Agent System Each file type has a dedicated agent: - **PDFAgent**: Extracts text from PDF pages - **DOCXAgent**: Parses Word documents - **ImageAgent**: OCR text extraction from images - **AudioAgent**: Speech-to-text transcription - **Orchestrator**: Routes files to appropriate agents ### RAG Pipeline 1. **Ingestion**: Files → Agents → Text chunks 2. **Embedding**: Text → Sentence-Transformers → Vectors 3. **Storage**: Vectors → FAISS index 4. **Retrieval**: Query → Top-K similar chunks 5. **Generation**: Context + Query → LLM → Answer ### Vector Store - Uses FAISS for efficient similarity search - Stores embeddings with metadata (file type, source, timestamps) - Persists index to disk for offline operation
+
 ## System Requirements
 
 - Python 3.9+
