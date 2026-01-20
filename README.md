@@ -234,6 +234,52 @@ flowchart LR
 
 ---
 
+## 3. Agent Processing Pipeline
+
+```mermaid
+graph TD
+    Start([File Upload]) --> Router{File Type?}
+    
+    Router -->|.pdf| PDF[PDF Agent]
+    Router -->|.docx/.doc| DOCX[DOCX Agent]
+    Router -->|.png/.jpg| IMG[Image Agent]
+    Router -->|.mp3/.wav| AUD[Audio Agent]
+    
+    PDF --> PDF1[PyPDF2<br/>Extract Text]
+    PDF1 --> PDF2[Split Pages]
+    PDF2 --> Merge
+    
+    DOCX --> DOCX1[python-docx<br/>Read Document]
+    DOCX1 --> DOCX2[Extract Paragraphs]
+    DOCX2 --> DOCX3[Preserve Formatting]
+    DOCX3 --> Merge
+    
+    IMG --> IMG1[Tesseract OCR<br/>Image Preprocessing]
+    IMG1 --> IMG2[Text Recognition]
+    IMG2 --> IMG3[Confidence Check]
+    IMG3 --> Merge
+    
+    AUD --> AUD1[Load Audio File]
+    AUD1 --> AUD2[Whisper Model<br/>Speech Recognition]
+    AUD2 --> AUD3[Transcription]
+    AUD3 --> Merge
+    
+    Merge[Merge Results] --> Meta[Add Metadata<br/>filename, type, timestamp]
+    Meta --> Chunk[Chunk Text<br/>By Paragraphs]
+    Chunk --> Embed[Generate Embeddings<br/>384d vectors]
+    Embed --> Store[Store in Vector DB]
+    Store --> End([Processing Complete])
+    
+    style PDF fill:#FFE5E5
+    style DOCX fill:#E5F5FF
+    style IMG fill:#FFE5FF
+    style AUD fill:#FFFFE5
+    style Embed fill:#E5FFE5
+    style Store fill:#FFE5D5
+```
+
+---
+
 
 ## Functional Capabilities
 
