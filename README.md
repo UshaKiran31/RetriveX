@@ -35,7 +35,7 @@ It combines semantic search with local Large Language Models (LLMs) to deliver a
 - **Python** – Backend and AI pipelines
 - **FastAPI** – Backend API
 - **FAISS** – Vector similarity search
-- **Sentence-Transformers** – Embedding generation
+- **Sentence-Transformers** – Embedding generation (all-MiniLM-L6-v2)
 - **Retrieval-Augmented Generation (RAG)**
 
 ### AI & Processing Tools
@@ -44,7 +44,7 @@ It combines semantic search with local Large Language Models (LLMs) to deliver a
 - **Tesseract OCR** – Image text extraction
 
 ### Frontend
-- **HTML, CSS, JavaScript**
+- **React.js**
 
 ---
 
