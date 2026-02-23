@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import './App.css'
+import Dither from './components/Dither/Dither'
 
 let hasHandledInitialHash = false
 
@@ -9,8 +10,8 @@ function getLocationFromHash() {
   if (!hasHandledInitialHash) {
     hasHandledInitialHash = true
     if (hash === '#/login' || hash.startsWith('#/login?')) {
-      window.location.hash = '#/'
-      return { path: '/', query: {} }
+      // Don't redirect automatically, let the user go to login if they want
+      // or if they are redirected by protected route logic
     }
   }
   const raw = hash.slice(1) || '/'
@@ -22,12 +23,46 @@ function getLocationFromHash() {
 
 function App() {
   const [location, setLocation] = useState(getLocationFromHash)
+  const [token, setToken] = useState(localStorage.getItem('token'))
+  const [user, setUser] = useState(null)
+
+  const logout = () => {
+    localStorage.removeItem('token')
+    setToken(null)
+    setUser(null)
+    window.location.hash = '#/'
+  }
 
   useEffect(() => {
     const handleHashChange = () => setLocation(getLocationFromHash())
     window.addEventListener('hashchange', handleHashChange)
     return () => window.removeEventListener('hashchange', handleHashChange)
   }, [])
+
+  useEffect(() => {
+    if (token) {
+      // Validate token and get user info
+      fetch('http://localhost:8001/me', {
+        headers: { 'X-Session-Id': token },
+      })
+        .then((res) => {
+          if (res.ok) return res.json()
+          throw new Error('Invalid token')
+        })
+        .then((data) => setUser(data))
+        .catch(() => {
+          logout()
+        })
+    }
+  }, [token])
+
+  const login = (newToken) => {
+    localStorage.setItem('token', newToken)
+    setToken(newToken)
+    window.location.hash = '#/notebooks'
+  }
+
+
 
   let page
   if (location.path === '/about') {
@@ -40,6 +75,17 @@ function App() {
     page = <DocumentSourceReport tab={location.query.tab} />
   } else if (location.path === '/reports/system-health') {
     page = <SystemHealthReport />
+  } else if (location.path === '/login') {
+    page = <LoginPage onLogin={login} />
+  } else if (location.path === '/signup') {
+    page = <SignupPage onLogin={login} />
+  } else if (location.path === '/notebooks') {
+    page = token ? <NotebooksPage token={token} /> : <LoginPage onLogin={login} />
+  } else if (location.path === '/notebooks/new') {
+    page = token ? <CreateNotebookPage token={token} /> : <LoginPage onLogin={login} />
+  } else if (location.path.startsWith('/notebooks/')) {
+    const id = location.path.split('/')[2]
+    page = token ? <NotebookChatPage token={token} id={parseInt(id)} /> : <LoginPage onLogin={login} />
   } else {
     const initialSection =
       location.path === '/features' || location.path === '/login' ? location.path.slice(1) : null
@@ -47,15 +93,19 @@ function App() {
   }
 
   return (
-    <div className="landing">
-      <Header />
+    <div className={location.path.startsWith('/notebooks') ? "app-mode" : "landing"}>
+      {location.path.startsWith('/notebooks') ? (
+        <AppHeader user={user} logout={logout} />
+      ) : (
+        <Header user={user} logout={logout} />
+      )}
       <main>{page}</main>
-      <Footer />
+      {!location.path.startsWith('/notebooks') && location.path !== '/' && <Footer />}
     </div>
   )
 }
 
-function Header() {
+function Header({ user, logout }) {
   return (
     <header className="landingHeader">
       <div className="container landingHeaderInner">
@@ -86,14 +136,843 @@ function Header() {
           <a className="navLink" href="#/dashboard">
             Dashboard
           </a>
-          <a className="navLink navLinkButton" href="#/login">
-            Login
-          </a>
+          {user ? (
+            <>
+              <a className="navLink" href="#/notebooks">Notebooks</a>
+              <button className="navLink navLinkButton" onClick={logout}>
+                Logout
+              </button>
+            </>
+          ) : (
+            <a className="navLink navLinkButton" href="#/login">
+              Login
+            </a>
+          )}
         </nav>
       </div>
     </header>
   )
 }
+
+function AppHeader({ user, logout }) {
+  return (
+    <header className="appHeader">
+      <div className="appHeaderInner">
+        <div className="appBrand">
+          <a href="#/notebooks" className="brandLink">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 2L2 7L12 12L22 7L12 2Z" strokeLinejoin="round" />
+              <path d="M2 17L12 22L22 17" strokeLinejoin="round" />
+              <path d="M2 12L12 17L22 12" strokeLinejoin="round" />
+            </svg>
+            <span>RetrieveX</span>
+          </a>
+        </div>
+        <div className="appNav">
+          <span className="userGreeting">Hi, {user?.username}</span>
+          <div className="userAvatar">{user?.username?.[0]?.toUpperCase()}</div>
+          <button className="iconBtn" onClick={logout} aria-label="Logout">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
+        </div>
+      </div>
+    </header>
+  )
+}
+
+function LoginPage({ onLogin }) {
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (window.google) {
+      window.google.accounts.id.initialize({
+        client_id: "356131392279-hr59pjv0jqnt1efbvk1jdqbp2g1veqdj.apps.googleusercontent.com",
+        callback: handleGoogleCallback
+      });
+      window.google.accounts.id.renderButton(
+        document.getElementById("googleSignInDiv"),
+        { theme: "outline", size: "large", width: "100%" }
+      );
+    }
+  }, [])
+
+  const handleGoogleCallback = async (response) => {
+    try {
+      const res = await fetch('http://localhost:8001/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: response.credential })
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.detail || 'Google login failed')
+      }
+
+      const data = await res.json()
+      onLogin(data.session_id)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+
+    try {
+      const res = await fetch('http://localhost:8001/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        let msg = data.detail || 'Invalid credentials'
+        if (typeof msg !== 'string') {
+          msg = Array.isArray(msg)
+            ? msg.map(e => e.msg || JSON.stringify(e)).join(', ')
+            : JSON.stringify(msg)
+        }
+        throw new Error(msg)
+      }
+
+      const data = await res.json()
+      onLogin(data.session_id)
+    } catch (err) {
+      setError(err.message || 'Invalid username or password')
+    }
+  }
+
+  return (
+    <section className="section loginSection">
+      <div className="container">
+        <div className="authCard">
+          <div className="authHeader">
+            <h1 className="authTitle">Welcome back</h1>
+            <p className="authSubtitle">Sign in to continue to RetrieveX</p>
+          </div>
+
+          <div id="googleSignInDiv" style={{ width: '100%', marginBottom: '1.5rem', height: 40 }}></div>
+
+          <div className="authDivider">Or continue with username</div>
+
+          <form className="authForm" onSubmit={handleSubmit}>
+            <label className="field">
+              <span className="fieldLabel">Username</span>
+              <input
+                className="fieldInput"
+                type="text"
+                placeholder="username"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                required
+              />
+            </label>
+            <label className="field">
+              <span className="fieldLabel">Password</span>
+              <input
+                className="fieldInput"
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
+            </label>
+
+            {error && <div className="authError">{error}</div>}
+
+            <div className="authFooter">
+              <label className="checkboxLabel">
+                <input type="checkbox" /> Remember me
+              </label>
+              <a href="#" className="authLink">Forgot password?</a>
+            </div>
+
+            <button className="btn btnPrimary btnFull" type="submit">
+              Sign in
+            </button>
+          </form>
+
+          <div className="authBottom">
+            Don't have an account? <a href="#/signup" className="authLink">Sign up</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function SignupPage({ onLogin }) {
+  const [username, setUsername] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    if (window.google) {
+      window.google.accounts.id.initialize({
+        client_id: "356131392279-hr59pjv0jqnt1efbvk1jdqbp2g1veqdj.apps.googleusercontent.com",
+        callback: handleGoogleCallback
+      });
+      window.google.accounts.id.renderButton(
+        document.getElementById("googleSignUpDiv"),
+        { theme: "outline", size: "large", width: "100%" }
+      );
+    }
+  }, [])
+
+  const handleGoogleCallback = async (response) => {
+    try {
+      const res = await fetch('http://localhost:8001/auth/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: response.credential })
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.detail || 'Google login failed')
+      }
+
+      const data = await res.json()
+      onLogin(data.session_id)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  const validatePassword = (pwd) => {
+    if (pwd.length < 6) return "Password must be at least 6 characters long";
+    if (!/[A-Z]/.test(pwd)) return "Password must contain at least one uppercase letter";
+    if (!/[a-z]/.test(pwd)) return "Password must contain at least one lowercase letter";
+    if (!/\d/.test(pwd)) return "Password must contain at least one number";
+    if (!/[!@#$%^&*(),.?":{}|<>]/.test(pwd)) return "Password must contain at least one special character";
+    return null;
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+
+    const pwdError = validatePassword(password);
+    if (pwdError) {
+      setError(pwdError);
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError("Passwords don't match")
+      return
+    }
+
+    // Basic email validation
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setError("Invalid email format")
+      return
+    }
+
+    try {
+      const res = await fetch('http://localhost:8001/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: username.trim(),
+          password,
+          email: email ? email.trim() : null
+        })
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        let msg = data.detail || 'Signup failed'
+        if (typeof msg !== 'string') {
+          msg = Array.isArray(msg)
+            ? msg.map(e => e.msg || JSON.stringify(e)).join(', ')
+            : JSON.stringify(msg)
+        }
+        throw new Error(msg)
+      }
+
+      const data = await res.json()
+      onLogin(data.session_id)
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  return (
+    <section className="section loginSection">
+      <div className="container">
+        <div className="authCard">
+          <div className="authHeader">
+            <h1 className="authTitle">Create your account</h1>
+            <p className="authSubtitle">Sign up to start using RetrieveX</p>
+          </div>
+
+          <div id="googleSignUpDiv" style={{ width: '100%', marginBottom: '1.5rem', height: 40 }}></div>
+
+          <div className="authDivider">Or continue with username</div>
+
+          <form className="authForm" onSubmit={handleSubmit}>
+            <label className="field">
+              <span className="fieldLabel">Username</span>
+              <input
+                className="fieldInput"
+                type="text"
+                placeholder="username"
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                required
+              />
+            </label>
+            <label className="field">
+              <span className="fieldLabel">Email (Optional)</span>
+              <input
+                className="fieldInput"
+                type="email"
+                placeholder="you@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span className="fieldLabel">Password</span>
+              <input
+                className="fieldInput"
+                type="password"
+                placeholder="At least 6 chars, 1 uppercase, 1 special"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                required
+              />
+              <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.25rem' }}>
+                Must contain: 6 chars, uppercase, lowercase, number, special char
+              </div>
+            </label>
+            <label className="field">
+              <span className="fieldLabel">Confirm Password</span>
+              <input
+                className="fieldInput"
+                type="password"
+                placeholder="••••••••"
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                required
+              />
+            </label>
+
+            {error && <div className="authError">{error}</div>}
+
+            <button className="btn btnPrimary btnFull" type="submit">
+              Create account
+            </button>
+          </form>
+
+          <div className="authBottom">
+            Already have an account? <a href="#/login" className="authLink">Sign in</a>
+          </div>
+        </div>
+      </div>
+    </section>
+  )
+}
+
+function NotebooksPage({ token }) {
+  const [notebooks, setNotebooks] = useState([])
+  const [showModal, setShowModal] = useState(false)
+  const [menuOpenId, setMenuOpenId] = useState(null)
+  const [editingId, setEditingId] = useState(null)
+  const [newTitle, setNewTitle] = useState('')
+
+  useEffect(() => {
+    fetch('http://localhost:8001/notebooks', {
+      headers: { 'X-Session-Id': token }
+    })
+      .then(res => res.json())
+      .then(data => setNotebooks(data))
+  }, [token])
+
+  const handleUpload = async (files) => {
+    const formData = new FormData()
+    const title = files[0].name.split('.')[0] || "Untitled Notebook"
+    formData.append('title', title)
+
+    files.forEach(file => {
+      formData.append('files', file)
+    })
+
+    try {
+      const res = await fetch('http://localhost:8001/notebooks', {
+        method: 'POST',
+        headers: {
+          'X-Session-Id': token
+        },
+        body: formData
+      })
+
+      if (res.ok) {
+        const data = await res.json()
+        window.location.hash = `#/notebooks/${data.id}`
+      }
+    } catch (e) {
+      console.error("Upload failed", e)
+    }
+  }
+
+  const openMenu = (id) => setMenuOpenId(menuOpenId === id ? null : id)
+  const startEdit = (nb) => {
+    setEditingId(nb.id)
+    setNewTitle(nb.title)
+    setMenuOpenId(null)
+  }
+  const submitEdit = async (e) => {
+    e.preventDefault()
+    const res = await fetch(`http://localhost:8001/notebooks/${editingId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'X-Session-Id': token },
+      body: JSON.stringify({ title: newTitle })
+    })
+    if (res.ok) {
+      const updated = await res.json()
+      setNotebooks(notebooks.map(n => n.id === updated.id ? updated : n))
+      setEditingId(null)
+      setNewTitle('')
+    }
+  }
+  const deleteNotebook = async (id) => {
+    const ok = window.confirm('Delete this notebook?')
+    if (!ok) return
+    const res = await fetch(`http://localhost:8001/notebooks/${id}`, {
+      method: 'DELETE',
+      headers: { 'X-Session-Id': token }
+    })
+    if (res.ok) {
+      setNotebooks(notebooks.filter(n => n.id !== id))
+    }
+  }
+
+  return (
+    <div className="appContainer">
+      {showModal && (
+        <NotebookUploadModal
+          onClose={() => setShowModal(false)}
+          onUpload={handleUpload}
+        />
+      )}
+      <div className="appHeaderSection">
+        <h2 className="appPageTitle">Recent notebooks</h2>
+
+      </div>
+
+      <div className="notebooksGrid">
+        <div className="notebookCard createCard" onClick={() => setShowModal(true)}>
+          <div className="createIcon">+</div>
+          <div className="createLabel">Create new notebook</div>
+        </div>
+
+        {notebooks.map(nb => (
+          <div key={nb.id} className="notebookCard" style={{ position: 'relative' }}>
+            <a href={`#/notebooks/${nb.id}`} style={{ textDecoration: 'none', color: 'inherit', display: 'block' }}>
+              <div className="notebookIcon" style={{ background: getRandomColor(nb.id) }}>{nb.icon || '📄'}</div>
+              <div className="notebookInfo">
+                <h3 className="notebookTitle">{nb.title}</h3>
+                <div className="notebookMeta">
+                  {nb.date} · {nb.sources} sources
+                </div>
+              </div>
+            </a>
+            <button
+              className="iconBtn"
+              onClick={() => openMenu(nb.id)}
+              style={{ position: 'absolute', top: 8, right: 8 }}
+              aria-label="Menu"
+            >⋮</button>
+            {menuOpenId === nb.id && (
+              <div className="menuPanel" style={{ position: 'absolute', top: 36, right: 8, zIndex: 10 }}>
+                <button className="menuItem" onClick={() => startEdit(nb)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                  </svg>
+                  <span>Edit title</span>
+                </button>
+                <button className="menuItem" onClick={() => deleteNotebook(nb.id)}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                    <path d="M10 11v6" />
+                    <path d="M14 11v6" />
+                    <path d="M9 6l1-3h4l1 3" />
+                  </svg>
+                  <span>Delete</span>
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      {editingId && (
+        <div className="modalOverlay" onClick={() => setEditingId(null)}>
+          <div className="modalContent" onClick={e => e.stopPropagation()}>
+            <div className="modalHeader">
+              <h3>Edit title</h3>
+              <button className="closeBtn" onClick={() => setEditingId(null)}>×</button>
+            </div>
+            <div className="modalBody">
+              <form onSubmit={submitEdit}>
+                <label className="field">
+                  <span className="fieldLabel">Title</span>
+                  <input className="fieldInput darkInput" value={newTitle} onChange={e => setNewTitle(e.target.value)} />
+                </label>
+                <div className="modalFooter">
+                  <button type="button" className="btn btnSecondary" onClick={() => setEditingId(null)}>Cancel</button>
+                  <button type="submit" className="btn btnPrimary">Save</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function NotebookChatPage({ token, id }) {
+  const [notebook, setNotebook] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const [sources, setSources] = useState([])
+  const [showModal, setShowModal] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    fetch(`http://localhost:8001/notebooks/${id}`, {
+      headers: { 'X-Session-Id': token }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('Failed to load')
+        return res.json()
+      })
+      .then(data => {
+        setNotebook(data)
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+
+    // Load chat history
+    fetch(`http://localhost:8001/notebooks/${id}/chat`, {
+      headers: { 'X-Session-Id': token }
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (Array.isArray(data)) {
+          setMessages(data)
+        }
+      })
+      .catch(console.error)
+  }, [token, id])
+
+  const handleUpload = async (files) => {
+    const formData = new FormData()
+    files.forEach(file => formData.append('files', file))
+    try {
+      const res = await fetch(`http://localhost:8001/notebooks/${id}/files`, {
+        method: 'POST',
+        headers: { 'X-Session-Id': token },
+        body: formData
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || 'Upload failed')
+      }
+      const data = await res.json()
+      setNotebook(data)
+      setShowModal(false)
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `Upload error: ${e.message}` }])
+    }
+  }
+
+  const sendMessage = async () => {
+    const q = input.trim()
+    if (!q) return
+    setMessages(prev => [...prev, { role: 'user', content: q }])
+    setInput('')
+    setIsLoading(true)
+    try {
+      const res = await fetch('http://localhost:8001/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Session-Id': token
+        },
+        body: JSON.stringify({ notebook_id: id, question: q })
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.detail || 'Chat failed')
+      }
+      const data = await res.json()
+      setMessages(prev => [...prev, { role: 'assistant', content: data.answer }])
+      setSources(Array.isArray(data.sources) ? data.sources : [])
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${e.message}` }])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const getFileName = (path) => {
+    if (!path) return ''
+    return path.replace(/^.*[\\\/]/, '')
+  }
+
+  if (loading) return <div className="appContainer">Loading...</div>
+  if (!notebook) return <div className="appContainer">Notebook not found</div>
+
+  return (
+    <div className="chatLayout">
+      <aside className="chatSidebar">
+        <div className="sidebarHeader">
+          <a href="#/notebooks" className="backBtn" aria-label="Back to notebooks">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </a>
+          <span className="sidebarTitle">Sources</span>
+          <button className="iconBtn" onClick={() => setShowModal(true)} aria-label="Add sources">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+        <div className="sourcesList">
+          <div className="sourcesHeader">
+            <span>{notebook.sources} source{notebook.sources !== 1 ? 's' : ''}</span>
+          </div>
+          {(sources.length > 0 ? sources.map((src, i) => (
+            <div key={i} className="sourceItem active">
+              <span className="sourceIcon">📄</span>
+              <span className="sourceName">{getFileName(src.file)}</span>
+              <span className="sourceCheck">✓</span>
+            </div>
+          )) : (notebook.files || []).map((file, i) => (
+            <div key={i} className="sourceItem">
+              <span className="sourceIcon">📄</span>
+              <span className="sourceName">{getFileName(file)}</span>
+            </div>
+          )))}
+        </div>
+      </aside>
+      <main className="chatMain">
+        {showModal && (
+          <NotebookUploadModal onClose={() => setShowModal(false)} onUpload={handleUpload} />
+        )}
+        <div className="chatMessages">
+          {messages.length === 0 && (
+            <div className="chatEmptyState">
+              <div className="notebookIconLarge" style={{ background: '#ffab40' }}>{notebook.icon || '📙'}</div>
+              <h1 className="chatTitle">{notebook.title}</h1>
+              <div className="chatMeta">{notebook.sources} source{notebook.sources !== 1 ? 's' : ''}</div>
+            </div>
+          )}
+          {messages.map((msg, i) => (
+            <div key={i} className={`message ${msg.role}`}>
+              <div className="messageContent">{msg.content}</div>
+            </div>
+          ))}
+          {isLoading && (
+            <div className="loadingRow">
+              <span className="loadingSpinner" aria-hidden="true"></span>
+              <span>Exploring your material...</span>
+            </div>
+          )}
+        </div>
+        <div className="chatInputArea">
+          <div className="chatInputWrapper">
+            <input
+              type="text"
+              placeholder="Start typing..."
+              className="chatInput"
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && sendMessage()}
+            />
+            <button className="sendBtn" onClick={sendMessage}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></svg>
+            </button>
+          </div>
+          <div className="chatDisclaimer">
+            NotebookLM can be inaccurate; please double-check its responses.
+          </div>
+        </div>
+      </main>
+    </div>
+  )
+}
+
+function NotebookUploadModal({ onClose, onUpload }) {
+  const [files, setFiles] = useState([])
+  const [isDragging, setIsDragging] = useState(false)
+
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e) => {
+    e.preventDefault()
+    setIsDragging(false)
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      setFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)])
+    }
+  }
+
+  const handleFileSelect = (e) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setFiles(prev => [...prev, ...Array.from(e.target.files)])
+    }
+  }
+
+  const handleUploadClick = () => {
+    if (files.length === 0) return
+    onUpload(files)
+  }
+
+  return (
+    <div className="modalOverlay" onClick={onClose}>
+      <div className="modalContent" onClick={e => e.stopPropagation()}>
+        <div className="modalHeader">
+          <h3>Add sources</h3>
+          <button className="closeBtn" onClick={onClose}>×</button>
+        </div>
+        <div className="modalBody">
+          <p className="modalDesc">
+            Sources let NotebookLM base its responses on the information that matters most to you.
+            (Examples: marketing plans, course reading, research notes, meeting transcripts, sales documents, etc.)
+          </p>
+
+          {files.length > 0 ? (
+            <div className="fileList">
+              {files.map((f, i) => (
+                <div key={i} className="fileItem">
+                  <span>📄 {f.name}</span>
+                  <button onClick={() => setFiles(files.filter((_, idx) => idx !== i))}>×</button>
+                </div>
+              ))}
+              <button className="addMoreBtn" onClick={() => document.getElementById('fileInput').click()}>+ Add more</button>
+            </div>
+          ) : (
+            <div
+              className={`uploadZone ${isDragging ? 'dragging' : ''}`}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
+              <div className="uploadIcon">⬆️</div>
+              <div className="uploadText">Upload sources</div>
+              <div className="uploadSubtext">Drag and drop or <span className="link" onClick={() => document.getElementById('fileInput').click()}>choose file</span> to upload</div>
+            </div>
+          )}
+
+          <input
+            type="file"
+            id="fileInput"
+            multiple
+            style={{ display: 'none' }}
+            onChange={handleFileSelect}
+          />
+
+          <div className="supportedTypes">
+            Supported file types: PDF, .txt, Markdown, Audio (e.g. .mp3), .docx, .avif, .bmp, .gif, .ico, .jp2, .png, .webp, .jxl, .tiff, .heic, .heif, .jpg, .ipe
+          </div>
+        </div>
+        <div className="modalFooter">
+          <div className="sourceLimit">Source limit 0/50</div>
+          {files.length > 0 && (
+            <button className="btn btnPrimary" onClick={handleUploadClick}>Insert {files.length} sources</button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function CreateNotebookPage({ token }) {
+  const [title, setTitle] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    const newNotebook = {
+      id: Date.now(),
+      title: title || 'Untitled Notebook',
+      date: new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      sources: 0,
+      icon: '📘'
+    }
+
+    await fetch('http://localhost:8001/notebooks', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Session-Id': token
+      },
+      body: JSON.stringify(newNotebook)
+    })
+
+    window.location.hash = '#/notebooks'
+  }
+
+  return (
+    <div className="appContainer">
+      <div className="appHeaderSection">
+        <h2 className="appPageTitle">Create new notebook</h2>
+      </div>
+      <div className="createNotebookForm">
+        <form onSubmit={handleSubmit}>
+          <label className="field">
+            <span className="fieldLabel" style={{ color: '#fff' }}>Notebook Title</span>
+            <input
+              className="fieldInput darkInput"
+              type="text"
+              placeholder="Enter notebook title"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              autoFocus
+            />
+          </label>
+          <div className="formActions">
+            <a href="#/notebooks" className="btn btnSecondary">Cancel</a>
+            <button type="submit" className="btn btnPrimary">Create</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+function getRandomColor(id) {
+  const colors = ['#ff4081', '#7c4dff', '#00e5ff', '#00e676', '#ffea00', '#ff9100'];
+  return colors[id % colors.length];
+}
+
 
 function Footer() {
   return (
@@ -121,332 +1000,326 @@ function HomePage({ initialSection }) {
 
   return (
     <>
-      <section id="home" className="section hero">
-        <div className="container heroInner">
-          <div className="heroTopline">Fully offline • Privacy-preserving • Multi-modal</div>
-          <h1 className="heroTitle">
-            Offline <span className="gradientText">Multi-modal</span> Knowledge Retrieval System
-          </h1>
-          <p className="heroSubtitle">
-            Query PDFs, documents, images, and audio files using natural language — fully offline and privacy-preserving.
-          </p>
+      <Dither
+        waveColor={[0.75, 0.75, 0.75]}
+        backgroundColor={[1, 1, 1]}
+        disableAnimation={false}
+        enableMouseInteraction
+        mouseRadius={0.3}
+        colorNum={4}
+        waveAmplitude={0.3}
+        waveFrequency={3}
+        waveSpeed={0.05}
+        className="dither-full-page"
+      />
+      <div style={{ position: 'relative', zIndex: 1 }}>
+        <section id="home" className="section hero" style={{ position: 'relative', overflow: 'hidden' }}>
+          <div className="container heroInner" style={{ position: 'relative', zIndex: 1 }}>
+            <div className="heroTopline">Fully offline • Privacy-preserving • Multi-modal</div>
+            <h1 className="heroTitle">
+              Offline <span className="gradientText">Multi-modal</span> Knowledge Retrieval System
+            </h1>
+            <p className="heroSubtitle">
+              Query PDFs, documents, images, and audio files using natural language — fully offline and privacy-preserving.
+            </p> 
+            
 
-          <div className="heroActions">
-            <a className="btn btnPrimary" href="#/dashboard">
-              Get Started
-            </a>
-            <a className="btn btnSecondary" href="#/features">
-              View Features
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <section id="about" className="section sectionAlt">
-        <div className="container">
-          <div className="sectionHeader">
-            <h2 className="sectionTitle">Why Traditional Search Falls Short</h2>
-          </div>
-
-          <div className="twoCol">
-            <div className="panel">
-              <div className="panelTitle">Problem</div>
-              <ul className="list">
-                <li>Keyword-based search lacks context</li>
-                <li>Cannot query across multiple file formats</li>
-                <li>Cloud-based AI risks data privacy</li>
-              </ul>
-            </div>
-
-            <div className="panel panelHighlight">
-              <div className="panelTitle">Solution</div>
-              <ul className="list">
-                <li>Semantic search across multiple data types</li>
-                <li>Retrieval-Augmented Generation (RAG)</li>
-                <li>Fully offline local AI processing</li>
-              </ul>
+            <div className="heroActions">
+              <a className="btn btnPrimary" href="#/login">
+                Get Started
+              </a>
+              <a className="btn btnSecondary" href="#/features">
+                View Features
+              </a>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section id="features" className="section">
-        <div className="container">
-          <div className="sectionHeader">
-            <h2 className="sectionTitle">Core Capabilities</h2>
-          </div>
+        <section id="about" className="section sectionAlt">
+          <div className="container">
+            <div className="sectionHeader">
+              <h2 className="sectionTitle">Why Traditional Search Falls Short</h2>
+            </div>
 
-          <div className="cardGrid">
-            <div className="card">
-              <div className="cardIcon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" className="iconSvg">
-                  <path
-                    d="M4 6.5A2.5 2.5 0 0 1 6.5 4h3A2.5 2.5 0 0 1 12 6.5v11A2.5 2.5 0 0 0 9.5 15h-3A2.5 2.5 0 0 0 4 17.5v-11Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M20 6.5A2.5 2.5 0 0 0 17.5 4h-3A2.5 2.5 0 0 0 12 6.5v11a2.5 2.5 0 0 1 2.5-2.5h3A2.5 2.5 0 0 1 20 17.5v-11Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+            <div className="twoCol">
+              <div className="panel">
+                <div className="panelTitle">Problem</div>
+                <ul className="list">
+                  <li>Keyword-based search lacks context</li>
+                  <li>Cannot query across multiple file formats</li>
+                  <li>Cloud-based AI risks data privacy</li>
+                </ul>
               </div>
-              <div className="cardTitle">Multi-modal Processing</div>
-              <ul className="cardList">
-                <li>Supports PDF, DOCX, Images, and Audio</li>
-                <li>Automatic modality detection</li>
-              </ul>
-            </div>
 
-            <div className="card">
-              <div className="cardIcon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" className="iconSvg">
-                  <path
-                    d="M10.5 7.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                  />
-                  <path
-                    d="M14.2 14.2 19 19"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
+              <div className="panel panelHighlight">
+                <div className="panelTitle">Solution</div>
+                <ul className="list">
+                  <li>Semantic search across multiple data types</li>
+                  <li>Retrieval-Augmented Generation (RAG)</li>
+                  <li>Fully offline local AI processing</li>
+                </ul>
               </div>
-              <div className="cardTitle">Semantic Retrieval</div>
-              <ul className="cardList">
-                <li>Vector-based similarity search</li>
-                <li>FAISS-powered indexing</li>
-              </ul>
-            </div>
-
-            <div className="card">
-              <div className="cardIcon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" className="iconSvg">
-                  <path
-                    d="M7.5 9.5a3.5 3.5 0 0 1 6.9-1.1A3.2 3.2 0 0 1 18.7 11c0 1.9-1.6 3.5-3.5 3.5H9.2C7.4 14.5 6 13 6 11.2c0-1.5 1-2.9 2.5-3.2Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M9 18h6"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </div>
-              <div className="cardTitle">Context-Aware Answering</div>
-              <ul className="cardList">
-                <li>RAG-based response generation</li>
-                <li>Grounded in retrieved evidence</li>
-              </ul>
-            </div>
-
-            <div className="card">
-              <div className="cardIcon" aria-hidden="true">
-                <svg viewBox="0 0 24 24" className="iconSvg">
-                  <path
-                    d="M12 3a6 6 0 0 0-6 6v3.2c0 1.1-.6 2.2-1.6 2.8-.3.2-.4.6-.2.9.7 1 1.8 1.6 3 1.6h9.6c1.2 0 2.3-.6 3-1.6.2-.3.1-.7-.2-.9-1-.6-1.6-1.7-1.6-2.8V9a6 6 0 0 0-6-6Z"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinejoin="round"
-                  />
-                  <path
-                    d="M9.5 20a2.5 2.5 0 0 0 5 0"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.6"
-                    strokeLinecap="round"
-                  />
-                </svg>
-              </div>
-              <div className="cardTitle">Offline &amp; Secure</div>
-              <ul className="cardList">
-                <li>No cloud dependency</li>
-                <li>Complete data privacy</li>
-              </ul>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section id="workflow" className="section sectionAlt">
-        <div className="container">
-          <div className="sectionHeader">
-            <h2 className="sectionTitle">How the System Works</h2>
-          </div>
+        <section id="features" className="section">
+          <div className="container">
+            <div className="sectionHeader">
+              <h2 className="sectionTitle">Core Capabilities</h2>
+            </div>
 
-          <div className="workflow">
-            <div className="workflowStep">
-              <div className="stepNumber">1</div>
-              <div className="stepText">Upload multi-modal files</div>
-            </div>
-            <div className="workflowArrow" aria-hidden="true">
-              <span />
-            </div>
-            <div className="workflowStep">
-              <div className="stepNumber">2</div>
-              <div className="stepText">Content extraction using agents</div>
-            </div>
-            <div className="workflowArrow" aria-hidden="true">
-              <span />
-            </div>
-            <div className="workflowStep">
-              <div className="stepNumber">3</div>
-              <div className="stepText">Embedding generation and indexing</div>
-            </div>
-            <div className="workflowArrow" aria-hidden="true">
-              <span />
-            </div>
-            <div className="workflowStep">
-              <div className="stepNumber">4</div>
-              <div className="stepText">Natural language query</div>
-            </div>
-            <div className="workflowArrow" aria-hidden="true">
-              <span />
-            </div>
-            <div className="workflowStep">
-              <div className="stepNumber">5</div>
-              <div className="stepText">Evidence-backed response</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="use-cases" className="section">
-        <div className="container">
-          <div className="sectionHeader">
-            <h2 className="sectionTitle">Who Can Use This System?</h2>
-          </div>
-
-          <div className="useCases">
-            <div className="useCaseItem">
-              <div className="useCaseTitle">Researchers &amp; Academicians</div>
-              <div className="useCaseDesc">Faster literature review across PDF, image, audio.</div>
-            </div>
-            <div className="useCaseItem">
-              <div className="useCaseTitle">Enterprise &amp; Corporate Users</div>
-              <div className="useCaseDesc">Private search across internal docs and meetings.</div>
-            </div>
-            <div className="useCaseItem">
-              <div className="useCaseTitle">Legal &amp; Compliance Professionals</div>
-              <div className="useCaseDesc">Evidence-backed answers with exact source references.</div>
-            </div>
-            <div className="useCaseItem">
-              <div className="useCaseTitle">Healthcare &amp; Medical Staff</div>
-              <div className="useCaseDesc">Local analysis of reports, notes, and audio.</div>
-            </div>
-            <div className="useCaseItem">
-              <div className="useCaseTitle">Students &amp; Self-Learners</div>
-              <div className="useCaseDesc">Study assistant for notes, lectures, and textbooks.</div>
-            </div>
-            <div className="useCaseItem">
-              <div className="useCaseTitle">Admins &amp; Developers</div>
-              <div className="useCaseDesc">Extend agents and customize offline pipelines.</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="dashboard" className="section sectionAlt">
-        <div className="container">
-          <div className="sectionHeader">
-            <h2 className="sectionTitle">Built-in Reports &amp; Dashboards</h2>
-            <p className="sectionSubtitle">
-              Preview the analytics and monitoring views powered by your offline multi-modal RAG system.
-            </p>
-          </div>
-
-          <div className="reportsGrid">
-            <a className="reportTile" href="#/reports/query-analytics">
-              <div className="reportTileHeader">
-                <span className="reportTileTitle">Query Analytics Dashboard</span>
+            <div className="cardGrid">
+              <div className="card">
+                <div className="cardIcon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="iconSvg">
+                    <path
+                      d="M4 6.5A2.5 2.5 0 0 1 6.5 4h3A2.5 2.5 0 0 1 12 6.5v11A2.5 2.5 0 0 0 9.5 15h-3A2.5 2.5 0 0 0 4 17.5v-11Z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M20 6.5A2.5 2.5 0 0 0 17.5 4h-3A2.5 2.5 0 0 0 12 6.5v11a2.5 2.5 0 0 1 2.5-2.5h3A2.5 2.5 0 0 1 20 17.5v-11Z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </div>
+                <div className="cardTitle">Multi-modal Processing</div>
+                <ul className="cardList">
+                  <li>Supports PDF, DOCX, Images, and Audio</li>
+                  <li>Automatic modality detection</li>
+                </ul>
               </div>
-              <div className="reportTileBody">
-                <div>Total queries performed</div>
-                <div>Most queried documents</div>
-                <div>Average response time</div>
-                <div>Query volume over time</div>
-              </div>
-              <span className="reportTileLink">Open report</span>
-            </a>
 
-            <a className="reportTile" href="#/reports/document-source?tab=usage">
-              <div className="reportTileHeader">
-                <span className="reportTileTitle">Document Usage Statistics</span>
+              <div className="card">
+                <div className="cardIcon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="iconSvg">
+                    <path
+                      d="M10.5 7.5a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                    />
+                    <path
+                      d="M14.2 14.2 19 19"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
+                <div className="cardTitle">Semantic Retrieval</div>
+                <ul className="cardList">
+                  <li>Vector-based similarity search</li>
+                  <li>FAISS-powered indexing</li>
+                </ul>
               </div>
-              <div className="reportTileBody">
-                <div>Uploaded documents by type</div>
-                <div>Top referenced documents</div>
-                <div>Document usage trends</div>
-              </div>
-              <span className="reportTileLink">Open report</span>
-            </a>
 
-            <a className="reportTile" href="#/reports/document-source?tab=attribution">
-              <div className="reportTileHeader">
-                <span className="reportTileTitle">Source Attribution</span>
+              <div className="card">
+                <div className="cardIcon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="iconSvg">
+                    <path
+                      d="M7.5 9.5a3.5 3.5 0 0 1 6.9-1.1A3.2 3.2 0 0 1 18.7 11c0 1.9-1.6 3.5-3.5 3.5H9.2C7.4 14.5 6 13 6 11.2c0-1.5 1-2.9 2.5-3.2Z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M9 18h6"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
+                <div className="cardTitle">Context-Aware Answering</div>
+                <ul className="cardList">
+                  <li>RAG-based response generation</li>
+                  <li>Grounded in retrieved evidence</li>
+                </ul>
               </div>
-              <div className="reportTileBody">
-                <div>Source-wise retrieval frequency</div>
-                <div>Top referenced sources</div>
-                <div>Share of answers per source</div>
-              </div>
-              <span className="reportTileLink">Open report</span>
-            </a>
 
-            <a className="reportTile" href="#/reports/system-health">
-              <div className="reportTileHeader">
-                <span className="reportBadge">Report</span>
-                <span className="reportTileTitle">View System Health Status</span>
+              <div className="card">
+                <div className="cardIcon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" className="iconSvg">
+                    <path
+                      d="M12 3a6 6 0 0 0-6 6v3.2c0 1.1-.6 2.2-1.6 2.8-.3.2-.4.6-.2.9.7 1 1.8 1.6 3 1.6h9.6c1.2 0 2.3-.6 3-1.6.2-.3.1-.7-.2-.9-1-.6-1.6-1.7-1.6-2.8V9a6 6 0 0 0-6-6Z"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinejoin="round"
+                    />
+                    <path
+                      d="M9.5 20a2.5 2.5 0 0 0 5 0"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
+                <div className="cardTitle">Offline &amp; Secure</div>
+                <ul className="cardList">
+                  <li>No cloud dependency</li>
+                  <li>Complete data privacy</li>
+                </ul>
               </div>
-              <div className="reportTileBody">
-                <div>Agent status overview</div>
-                <div>Index size and growth</div>
-                <div>Last processed file time</div>
-              </div>
-              <span className="reportTileLink">Open report</span>
-            </a>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section id="login" className="section">
-        <div className="container">
-          <div className="sectionHeader">
-            <h2 className="sectionTitle">Login</h2>
+        <section id="workflow" className="section sectionAlt">
+          <div className="container">
+            <div className="sectionHeader">
+              <h2 className="sectionTitle">How the System Works</h2>
+            </div>
+
+            <div className="workflow">
+              <div className="workflowStep">
+                <div className="stepNumber">1</div>
+                <div className="stepText">Upload multi-modal files</div>
+              </div>
+              <div className="workflowArrow" aria-hidden="true">
+                <span />
+              </div>
+              <div className="workflowStep">
+                <div className="stepNumber">2</div>
+                <div className="stepText">Content extraction using agents</div>
+              </div>
+              <div className="workflowArrow" aria-hidden="true">
+                <span />
+              </div>
+              <div className="workflowStep">
+                <div className="stepNumber">3</div>
+                <div className="stepText">Embedding generation and indexing</div>
+              </div>
+              <div className="workflowArrow" aria-hidden="true">
+                <span />
+              </div>
+              <div className="workflowStep">
+                <div className="stepNumber">4</div>
+                <div className="stepText">Natural language query</div>
+              </div>
+              <div className="workflowArrow" aria-hidden="true">
+                <span />
+              </div>
+              <div className="workflowStep">
+                <div className="stepNumber">5</div>
+                <div className="stepText">Evidence-backed response</div>
+              </div>
+            </div>
           </div>
-          <div className="loginCard">
-            <div className="loginTitle">Sign in (UI only)</div>
-            <form className="loginForm" onSubmit={(e) => e.preventDefault()}>
-              <label className="field">
-                <span className="fieldLabel">Email</span>
-                <input className="fieldInput" type="email" placeholder="you@example.com" />
-              </label>
-              <label className="field">
-                <span className="fieldLabel">Password</span>
-                <input className="fieldInput" type="password" placeholder="••••••••" />
-              </label>
-              <button className="btn btnPrimary btnFull" type="submit">
-                Login
-              </button>
-            </form>
+        </section>
+
+        <section id="use-cases" className="section">
+          <div className="container">
+            <div className="sectionHeader">
+              <h2 className="sectionTitle">Who Can Use This System?</h2>
+            </div>
+
+            <div className="useCases">
+              <div className="useCaseItem">
+                <div className="useCaseTitle">Researchers &amp; Academicians</div>
+                <div className="useCaseDesc">Faster literature review across PDF, image, audio.</div>
+              </div>
+              <div className="useCaseItem">
+                <div className="useCaseTitle">Enterprise &amp; Corporate Users</div>
+                <div className="useCaseDesc">Private search across internal docs and meetings.</div>
+              </div>
+              <div className="useCaseItem">
+                <div className="useCaseTitle">Legal &amp; Compliance Professionals</div>
+                <div className="useCaseDesc">Evidence-backed answers with exact source references.</div>
+              </div>
+              <div className="useCaseItem">
+                <div className="useCaseTitle">Healthcare &amp; Medical Staff</div>
+                <div className="useCaseDesc">Local analysis of reports, notes, and audio.</div>
+              </div>
+              <div className="useCaseItem">
+                <div className="useCaseTitle">Students &amp; Self-Learners</div>
+                <div className="useCaseDesc">Study assistant for notes, lectures, and textbooks.</div>
+              </div>
+              <div className="useCaseItem">
+                <div className="useCaseTitle">Admins &amp; Developers</div>
+                <div className="useCaseDesc">Extend agents and customize offline pipelines.</div>
+              </div>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+
+        <section id="dashboard" className="section sectionAlt">
+          <div className="container">
+            <div className="sectionHeader">
+              <h2 className="sectionTitle">Built-in Reports &amp; Dashboards</h2>
+              <p className="sectionSubtitle">
+                Preview the analytics and monitoring views powered by your offline multi-modal RAG system.
+              </p>
+            </div>
+
+            <div className="reportsGrid">
+              <a className="reportTile" href="#/reports/query-analytics">
+                <div className="reportTileHeader">
+                  <span className="reportTileTitle">Query Analytics Dashboard</span>
+                </div>
+                <div className="reportTileBody">
+                  <div>Total queries performed</div>
+                  <div>Most queried documents</div>
+                  <div>Average response time</div>
+                  <div>Query volume over time</div>
+                </div>
+                <span className="reportTileLink">Open report</span>
+              </a>
+
+              <a className="reportTile" href="#/reports/document-source?tab=usage">
+                <div className="reportTileHeader">
+                  <span className="reportTileTitle">Document Usage Statistics</span>
+                </div>
+                <div className="reportTileBody">
+                  <div>Uploaded documents by type</div>
+                  <div>Top referenced documents</div>
+                  <div>Document usage trends</div>
+                </div>
+                <span className="reportTileLink">Open report</span>
+              </a>
+
+              <a className="reportTile" href="#/reports/document-source?tab=attribution">
+                <div className="reportTileHeader">
+                  <span className="reportTileTitle">Source Attribution</span>
+                </div>
+                <div className="reportTileBody">
+                  <div>Source-wise retrieval frequency</div>
+                  <div>Top referenced sources</div>
+                  <div>Share of answers per source</div>
+                </div>
+                <span className="reportTileLink">Open report</span>
+              </a>
+
+              <a className="reportTile" href="#/reports/system-health">
+                <div className="reportTileHeader">
+                  <span className="reportBadge">Report</span>
+                  <span className="reportTileTitle">View System Health Status</span>
+                </div>
+                <div className="reportTileBody">
+                  <div>Agent status overview</div>
+                  <div>Index size and growth</div>
+                  <div>Last processed file time</div>
+                </div>
+                <span className="reportTileLink">Open report</span>
+              </a>
+            </div>
+          </div>
+        </section>
+
+        <Footer />
+
+      </div>
     </>
   )
 }
@@ -1035,7 +1908,7 @@ function AboutPage() {
             </div>
           </div>
 
-          
+
         </div>
       </div>
     </section>
