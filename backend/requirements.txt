@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+python-jose[cryptography]
+passlib[bcrypt]
+pydantic
+python-multipart
+google-auth
+requests
+python-dotenv
+PyPDF2
+python-docx
+pillow
+openai-whisper
+sentence-transformers
+faiss-cpu
+numpy
