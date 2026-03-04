@@ -25,6 +25,19 @@ class ProjectRead(BaseModel):
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
+
+class ProjectListItem(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+    total_conversations: int
+    total_documents: int
+
+class ProjectListResponse(BaseModel):
+    projects: List[ProjectListItem]
+    count: int
+
 class ConversationCreate(BaseModel):
     project_id: int
     title: Optional[str] = None
@@ -65,17 +78,6 @@ class DocumentRead(BaseModel):
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
-class ProjectListItem(BaseModel):
-    id: int
-    name: str
-    description: Optional[str] = None
-    created_at: datetime
-    total_conversations: int
-    total_documents: int
-
-class ProjectListResponse(BaseModel):
-    projects: List[ProjectListItem]
-    count: int
 
 class ConversationListItem(BaseModel):
     id: int
