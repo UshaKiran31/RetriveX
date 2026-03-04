@@ -196,6 +196,27 @@ async def logout(session_id: str = Header(None, alias="X-Session-Id")):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/log-activity")
+async def log_activity(activity: ActivityLog, session_id: str = Header(None, alias="X-Session-Id")):
+    """Log user activity"""
+    try:
+        session = verify_session(session_id)
+        
+        db.log_activity(
+            session["user_id"],
+            session_id,
+            activity.activity_type,
+            activity.activity_data
+        )
+        
+        return {
+            "status": "success",
+            "message": "Activity logged"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    
 @app.post("/auth/google")
 async def google_login(request: GoogleLoginRequest):
     """Login with Google (GSI)"""
@@ -246,6 +267,22 @@ async def google_login(request: GoogleLoginRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+@app.get("/my-activities")
+async def get_my_activities(limit: int = 100, session_id: str = Header(None, alias="X-Session-Id")):
+    """Get current user's activities"""
+    try:
+        session = verify_session(session_id)
+        activities = db.get_user_activities(session["user_id"], limit)
+        
+        return {
+            "activities": activities,
+            "count": len(activities)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 @app.get("/me")
 async def get_current_user(session_id: str = Header(None, alias="X-Session-Id")):
     """Get current user information"""
@@ -268,41 +305,8 @@ async def get_users(session_id: str = Header(None, alias="X-Session-Id")):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/my-activities")
-async def get_my_activities(limit: int = 100, session_id: str = Header(None, alias="X-Session-Id")):
-    """Get current user's activities"""
-    try:
-        session = verify_session(session_id)
-        activities = db.get_user_activities(session["user_id"], limit)
-        
-        return {
-            "activities": activities,
-            "count": len(activities)
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/log-activity")
-async def log_activity(activity: ActivityLog, session_id: str = Header(None, alias="X-Session-Id")):
-    """Log user activity"""
-    try:
-        session = verify_session(session_id)
-        
-        db.log_activity(
-            session["user_id"],
-            session_id,
-            activity.activity_type,
-            activity.activity_data
-        )
-        
-        return {
-            "status": "success",
-            "message": "Activity logged"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+
 
 # Notebook Endpoints
 @app.get("/notebooks", response_model=List[Notebook])
