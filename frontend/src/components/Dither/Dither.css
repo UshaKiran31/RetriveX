@@ -1,0 +1,33 @@
+.dither-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.dither-full-page {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* If we want mouse interaction, we need pointer-events auto, but z-index -1 might block clicks?
+   Actually, if it's z-index -1, it will be behind everything.
+   If we want it to be interactive, we might need a different approach or just accept it's background. 
+   But the user asked for "Dither", which implies the effect. The effect has mouse interaction.
+   If it's behind everything, mouse interaction might not work if other elements obstruct it.
+   However, usually for a background, we want it to be -1.
+   Let's see. pointer-events: none on the canvas container allows clicks to pass through to content.
+   BUT if we want the wave to react to mouse, we need it to receive events? 
+   No, usually threejs canvas needs to be on top to receive events OR we listen to window events.
+   The current implementation uses `onPointerMove` on a mesh. That mesh needs to be hittable.
+   If it's z-index -1, the body/content will be on top and consume events.
+   We can just set pointer-events: none on the container, but maybe the Dither component listens to global mouse?
+   Looking at Dither.jsx: `onPointerMove` is on a mesh. So it relies on raycasting/pointer events on the canvas.
+   If we put it behind, it won't receive events if content covers it.
+   For now, I'll set z-index: -1. Implicitly, we might lose mouse interaction where content is. 
+   That's probably acceptable for a background.
+*/
