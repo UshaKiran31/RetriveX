@@ -1,6 +1,6 @@
 # RetrieveX
 
-A offline Multi-Modal Retrieval-Augmented Generation (RAG) system. Upload PDFs, DOCX files, images, audio, and spreadsheets — then query them in natural language using local AI models. Your data never leaves your machine.
+A fully offline, privacy-first Multi-Modal Retrieval-Augmented Generation (RAG) system. Upload PDFs, DOCX files, images, audio, and spreadsheets — then query them in natural language using local AI models. Your data never leaves your machine.
 
 ---
 
@@ -197,7 +197,7 @@ All config is driven by environment variables (see `.env`):
 
 | Variable | Default | Description |
 |---|---|---|
-| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Sentence transformer model |
+| `EMBEDDING_MODEL` | `nomic-embed-text` | Ollama embedding model |
 | `UPLOAD_DIR` | `./data/uploads` | File upload directory |
 | `VECTOR_DB_PATH` | `./data/vector_db` | ChromaDB persistence path |
 | `LOGS_DIR` | `./logs` | Application logs |
