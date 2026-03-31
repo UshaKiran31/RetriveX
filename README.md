@@ -1,6 +1,6 @@
 # RetrieveX
 
-A fully offline, privacy-first Multi-Modal Retrieval-Augmented Generation (RAG) system. Upload PDFs, DOCX files, images, audio, and spreadsheets — then query them in natural language using local AI models. Your data never leaves your machine.
+A offline Multi-Modal Retrieval-Augmented Generation (RAG) system. Upload PDFs, DOCX files, images, audio, and spreadsheets — then query them in natural language using local AI models. Your data never leaves your machine.
 
 ---
 
