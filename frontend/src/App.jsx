@@ -5,6 +5,7 @@ import { ProjectWorkspace } from './pages/ProjectWorkspace'
 import { useNavigate, useLocation } from 'react-router-dom'
 import Dither from './components/Dither/Dither'
 import { AboutPage } from './pages/AboutPage'
+import api from './api/axios'
 
 let hasHandledInitialHash = false
 
@@ -35,14 +36,8 @@ function App() {
   useEffect(() => {
     if (token) {
       // Validate token and get user info
-      fetch('http://localhost:8001/me', {
-        headers: { 'X-Session-Id': token },
-      })
-        .then((res) => {
-          if (res.ok) return res.json()
-          throw new Error('Invalid token')
-        })
-        .then((data) => setUser(data))
+      api.get('/me')
+        .then((res) => setUser(res.data))
         .catch(() => {
           logout()
         })
@@ -179,19 +174,10 @@ function LoginPage({ onLogin }) {
 
   const handleGoogleCallback = async (response) => {
     try {
-      const res = await fetch('http://localhost:8001/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: response.credential })
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.detail || 'Google login failed')
-      }
-      const data = await res.json()
-      onLogin(data.session_id)
+      const res = await api.post('/auth/google', { token: response.credential })
+      onLogin(res.data.session_id)
     } catch (err) {
-      setError(err.message)
+      setError(err.response?.data?.detail || err.message || 'Google login failed')
     }
   }
 
@@ -213,27 +199,16 @@ function LoginPage({ onLogin }) {
     setError('')
 
     try {
-      const res = await fetch('http://localhost:8001/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      })
-
-      if (!res.ok) {
-        const data = await res.json()
-        let msg = data.detail || 'Invalid credentials'
-        if (typeof msg !== 'string') {
-          msg = Array.isArray(msg)
-            ? msg.map(e => e.msg || JSON.stringify(e)).join(', ')
-            : JSON.stringify(msg)
-        }
-        throw new Error(msg)
-      }
-
-      const data = await res.json()
-      onLogin(data.session_id)
+      const res = await api.post('/login', { username, password })
+      onLogin(res.data.session_id)
     } catch (err) {
-      setError(err?.message || 'Login failed. Please try again.')
+      let msg = err.response?.data?.detail || err.message || 'Invalid credentials'
+      if (typeof msg !== 'string') {
+        msg = Array.isArray(msg)
+          ? msg.map(e => e.msg || JSON.stringify(e)).join(', ')
+          : JSON.stringify(msg)
+      }
+      setError(msg)
     }
   }
 
@@ -306,19 +281,10 @@ function SignupPage({ onLogin }) {
 
   const handleGoogleCallback = async (response) => {
     try {
-      const res = await fetch('http://localhost:8001/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: response.credential })
-      })
-      if (!res.ok) {
-        const data = await res.json()
-        throw new Error(data.detail || 'Google login failed')
-      }
-      const data = await res.json()
-      onLogin(data.session_id)
+      const res = await api.post('/auth/google', { token: response.credential })
+      onLogin(res.data.session_id)
     } catch (err) {
-      setError(err.message)
+      setError(err.response?.data?.detail || err.message || 'Google login failed')
     }
   }
 
@@ -366,31 +332,20 @@ function SignupPage({ onLogin }) {
     }
 
     try {
-      const res = await fetch('http://localhost:8001/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: username.trim(),
-          password,
-          email: email ? email.trim() : null
-        })
+      const res = await api.post('/signup', {
+        username: username.trim(),
+        password,
+        email: email ? email.trim() : null
       })
-
-      if (!res.ok) {
-        const data = await res.json()
-        let msg = data.detail || 'Signup failed'
-        if (typeof msg !== 'string') {
-          msg = Array.isArray(msg)
-            ? msg.map(e => e.msg || JSON.stringify(e)).join(', ')
-            : JSON.stringify(msg)
-        }
-        throw new Error(msg)
-      }
-
-      const data = await res.json()
-      onLogin(data.session_id)
+      onLogin(res.data.session_id)
     } catch (err) {
-      setError(err.message)
+      let msg = err.response?.data?.detail || err.message || 'Signup failed'
+      if (typeof msg !== 'string') {
+        msg = Array.isArray(msg)
+          ? msg.map(e => e.msg || JSON.stringify(e)).join(', ')
+          : JSON.stringify(msg)
+      }
+      setError(msg)
     }
   }
 
@@ -476,11 +431,8 @@ function NotebooksPage({ token }) {
   const [showModal, setShowModal] = useState(false)
 
   useEffect(() => {
-    fetch('http://localhost:8001/notebooks', {
-      headers: { 'X-Session-Id': token }
-    })
-      .then(res => res.json())
-      .then(data => setNotebooks(data))
+    api.get('/notebooks')
+      .then(res => setNotebooks(res.data))
   }, [token])
 
   const handleUpload = async (files) => {
@@ -493,18 +445,10 @@ function NotebooksPage({ token }) {
     })
 
     try {
-      const res = await fetch('http://localhost:8001/notebooks', {
-        method: 'POST',
-        headers: {
-          'X-Session-Id': token
-        },
-        body: formData
+      const res = await api.post('/notebooks', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       })
-
-      if (res.ok) {
-        const data = await res.json()
-        window.location.hash = `#/notebooks/${data.id}`
-      }
+      window.location.hash = `#/notebooks/${res.data.id}`
     } catch (e) {
       console.error("Upload failed", e)
     }
@@ -550,18 +494,12 @@ function NotebookChatPage({ token, id }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`http://localhost:8001/notebooks/${id}`, {
-      headers: { 'X-Session-Id': token }
-    })
+    api.get(`/notebooks/${id}`)
       .then(res => {
-        if (!res.ok) throw new Error('Failed to load')
-        return res.json()
-      })
-      .then(data => {
-        setNotebook(data)
+        setNotebook(res.data)
         setLoading(false)
       })
-      .catch(err => setLoading(false))
+      .catch(() => setLoading(false))
   }, [token, id])
 
   if (loading) return <div className="appContainer">Loading...</div>
@@ -717,15 +655,7 @@ function CreateNotebookPage({ token }) {
       icon: '📘'
     }
 
-    await fetch('http://localhost:8001/notebooks', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Session-Id': token
-      },
-      body: JSON.stringify(newNotebook)
-    })
-
+    await api.post('/notebooks', newNotebook)
     window.location.hash = '#/notebooks'
   }
 
@@ -803,24 +733,24 @@ function HomePage({ initialSection }) {
           fullScreen={false}
           className="dither-hero"
         />
-          <div className="container heroInner" style={{ position: 'relative', zIndex: 1 }}>
-            <div className="heroTopline">Fully offline • Privacy-preserving • Multi-modal</div>
-            <h1 className="heroTitle">
-              Offline <span className="gradientText">Multi-modal</span> Knowledge Retrieval System
-            </h1>
-            <p className="heroSubtitle">
-              Query PDFs, documents, images, and audio files using natural language — fully offline and privacy-preserving.
-            </p>
+        <div className="container heroInner" style={{ position: 'relative', zIndex: 1 }}>
+          <div className="heroTopline">Fully offline • Privacy-preserving • Multi-modal</div>
+          <h1 className="heroTitle">
+            Offline <span className="gradientText">Multi-modal</span> Knowledge Retrieval System
+          </h1>
+          <p className="heroSubtitle">
+            Query PDFs, documents, images, and audio files using natural language — fully offline and privacy-preserving.
+          </p>
 
-            <div className="heroActions">
-              <a className="btn btnPrimary" href="#/dashboard">
-                Get Started
-              </a>
-              <a className="btn btnSecondary" href="#/features">
-                View Features
-              </a>
-            </div>
+          <div className="heroActions">
+            <a className="btn btnPrimary" href="#/dashboard">
+              Get Started
+            </a>
+            <a className="btn btnSecondary" href="#/features">
+              View Features
+            </a>
           </div>
+        </div>
       </section>
 
       <section id="about" className="section sectionAlt">

@@ -1,22 +1,20 @@
 import React, { useState, useEffect } from 'react'
+import api from '../api/axios'
 
 export function NotebooksPage({ token }) {
     const [notebooks, setNotebooks] = useState([])
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        fetch('http://localhost:8001/notebooks', {
-            headers: { 'X-Session-Id': token }
-        })
-        .then(res => res.json())
-        .then(data => {
-            setNotebooks(data)
-            setLoading(false)
-        })
-        .catch(err => {
-            console.error("Failed to load notebooks", err)
-            setLoading(false)
-        })
+        api.get('/notebooks')
+            .then(res => {
+                setNotebooks(res.data)
+                setLoading(false)
+            })
+            .catch(err => {
+                console.error("Failed to load notebooks", err)
+                setLoading(false)
+            })
     }, [token])
 
     if (loading) return <div className="loading">Loading notebooks...</div>
@@ -28,7 +26,7 @@ export function NotebooksPage({ token }) {
                     <h2 className="sectionTitle">My Notebooks</h2>
                     <a href="#/notebooks/new" className="btn btnPrimary">+ New Notebook</a>
                 </div>
-                
+
                 {notebooks.length === 0 ? (
                     <div className="emptyState">
                         <p>No notebooks yet. Create one to start analyzing your documents.</p>

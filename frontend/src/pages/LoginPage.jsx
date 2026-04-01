@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import api from '../api/axios'
 
 export function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('')
@@ -8,23 +9,12 @@ export function LoginPage({ onLogin }) {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-    
+
     try {
-        const res = await fetch('http://localhost:8001/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
-        })
-        
-        if (!res.ok) {
-            const data = await res.json()
-            throw new Error(data.detail || 'Login failed')
-        }
-        
-        const data = await res.json()
-        onLogin({ username }, data.session_id)
+      const res = await api.post('/login', { username, password })
+      onLogin({ username }, res.data.session_id)
     } catch (err) {
-        setError(err.message)
+      setError(err.response?.data?.detail || err.message)
     }
   }
 
@@ -37,10 +27,10 @@ export function LoginPage({ onLogin }) {
             {error && <div className="error-message">{error}</div>}
             <label className="field">
               <span className="fieldLabel">Username</span>
-              <input 
-                className="fieldInput" 
-                type="text" 
-                placeholder="Enter username" 
+              <input
+                className="fieldInput"
+                type="text"
+                placeholder="Enter username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -48,10 +38,10 @@ export function LoginPage({ onLogin }) {
             </label>
             <label className="field">
               <span className="fieldLabel">Password</span>
-              <input 
-                className="fieldInput" 
-                type="password" 
-                placeholder="••••••••" 
+              <input
+                className="fieldInput"
+                type="password"
+                placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -61,7 +51,7 @@ export function LoginPage({ onLogin }) {
               Login
             </button>
           </form>
-          
+
           <div className="authBottom">
             Don't have an account? <a href="#/signup" className="authLink">Sign up</a>
           </div>

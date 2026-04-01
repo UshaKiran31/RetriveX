@@ -147,6 +147,17 @@ uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```bash
 cd frontend
 npm install
+```
+
+Copy the example env file and set your backend URL:
+
+```bash
+cp .env.example .env
+```
+
+The default `.env.example` points to `http://localhost:8000` which works for local development. If you're connecting to a deployed backend, update `VITE_API_URL` in your `.env` accordingly.
+
+```bash
 npm run dev
 ```
 
