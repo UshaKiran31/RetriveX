@@ -36,6 +36,8 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://34.47.221.36:8000
     container_name: retrievex-frontend
     ports:
       - "3000:80"

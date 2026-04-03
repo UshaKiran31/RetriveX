@@ -8,16 +8,17 @@ RUN npm install
 
 COPY . .
 
-# Build the Vite app
+# Accept build-time env var
+ARG VITE_API_URL
+ENV VITE_API_URL=$VITE_API_URL
+
+# Build the Vite app (VITE_API_URL is baked in at this step)
 RUN npm run build
 
 # Stage 2: Serve with Nginx
 FROM nginx:alpine
 
-# Copy built assets from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
-
-# Custom Nginx config to handle React Router (SPA routing)
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
