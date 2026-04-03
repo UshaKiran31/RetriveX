@@ -29,7 +29,7 @@ COPY . .
 # Create required directories
 RUN mkdir -p data/uploads data/vector_db logs models /root/.cache/whisper
 
-# Pre-download Whisper base model so it's available offline at runtime
+# Pre-download Whisper base model at build time so it's available offline at runtime
 RUN python -c "import whisper; whisper.load_model('base')"
 
 EXPOSE 8000
