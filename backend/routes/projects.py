@@ -174,34 +174,38 @@ def _bg_embed_document(document_id: int, project_id: int, file_path: str):
             elif is_tabular(file_path):
                 summary, head_data = process_tabular_document(file_path, project_id, document_id)
                 
-                # Update document status in DB
+                # Update document status in DB — do this first, independently
                 doc = db.get(Document, document_id)
                 if doc:
                     doc.status = "completed"
+                    doc.error_message = None
                     db.commit()
 
-                # Create a message in the most recent conversation of the project to show CSV info
-                conv_stmt = select(Conversation).where(Conversation.project_id == project_id).order_by(Conversation.created_at.desc())
-                latest_conv = db.execute(conv_stmt).scalars().first()
-                
-                if latest_conv:
-                    # Construct tabular payload for the UI
-                    payload = {
-                        "tabular_result": True,
-                        "columns": list(head_data[0].keys()) if head_data else [],
-                        "data": head_data,
-                        "summary": summary,
-                        "source": os.path.basename(file_path)
-                    }
+                # Try to create a preview message — failure here must NOT affect doc status
+                try:
+                    conv_stmt = select(Conversation).where(Conversation.project_id == project_id).order_by(Conversation.created_at.desc())
+                    latest_conv = db.execute(conv_stmt).scalars().first()
                     
-                    msg = Message(
-                        conversation_id=latest_conv.id,
-                        role="assistant",
-                        content=summary,
-                        sources_json=json.dumps({"tabular": payload})
-                    )
-                    db.add(msg)
-                    db.commit()
+                    if latest_conv and head_data:
+                        preview_data = head_data[:50]
+                        payload = {
+                            "tabular_result": True,
+                            "columns": list(preview_data[0].keys()) if preview_data else [],
+                            "data": preview_data,
+                            "summary": summary,
+                            "source": os.path.basename(file_path)
+                        }
+                        msg = Message(
+                            conversation_id=latest_conv.id,
+                            role="assistant",
+                            content=summary,
+                            sources_json=json.dumps({"tabular": payload})
+                        )
+                        db.add(msg)
+                        db.commit()
+                except Exception as msg_err:
+                    db.rollback()
+                    print(f"[tabular] preview message insert skipped: {msg_err}")
             else:
                 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
                 project_dir = os.path.join(base_dir, "data", "projects", str(project_id))
