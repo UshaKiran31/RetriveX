@@ -16,10 +16,17 @@ import secrets
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from database import ensure_messages_sources_column
+from fastapi import FastAPI
+from database import Base, engine
+from models import * 
 
 app = FastAPI(title="Multi-modal RAG System", version="1.0.0")
 
-# CORS middleware
+
+Base.metadata.create_all(bind=engine)
+
+from fastapi.middleware.cors import CORSMiddleware
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,7 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Database
+# Initialize DB
 db = Database()
 ensure_messages_sources_column()
 
