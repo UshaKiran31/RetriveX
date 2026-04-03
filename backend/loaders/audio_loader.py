@@ -15,7 +15,12 @@ SUPPORTED = {".mp3", ".mp4", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".aac", "
 
 
 def _get_ffmpeg() -> str:
-    """Return path to ffmpeg — bundled binary first, then system PATH."""
+    """Return path to ffmpeg — system binary first, then bundled fallback."""
+    # Prefer system ffmpeg (available in Docker via apt)
+    import shutil
+    system_ffmpeg = shutil.which("ffmpeg")
+    if system_ffmpeg:
+        return system_ffmpeg
     try:
         import imageio_ffmpeg
         return imageio_ffmpeg.get_ffmpeg_exe()
