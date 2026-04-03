@@ -2,9 +2,11 @@ from langchain_chroma import Chroma
 from langchain_community.embeddings import OllamaEmbeddings
 import os
 
+OLLAMA_HOST = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+
 
 def _embedding():
-    return OllamaEmbeddings(model="nomic-embed-text")
+    return OllamaEmbeddings(model="nomic-embed-text", base_url=OLLAMA_HOST)
 
 def create_vector_store(documents, persist_directory="dbv1/chroma_db"):
     os.makedirs(persist_directory, exist_ok=True)
