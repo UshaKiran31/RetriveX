@@ -22,7 +22,7 @@ app = FastAPI(title="Multi-modal RAG System", version="1.0.0")
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:4173", "http://34.47.221.36:5173", "http://34.47.221.36", "http://35.244.25.44"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
