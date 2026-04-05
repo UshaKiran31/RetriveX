@@ -1,0 +1,3 @@
+Transaction ID,Date,Time,Type,Details,Amount,Status,Patient
+TRX-0011,2026-02-21,07:44,Sale,Order ORD-0008 - sunscreen,1100.00,Completed,Usha Kiran Paruchuri
+TRX-0010,2026-02-21,07:40,Sale,Order ORD-0007 - sunscreen,11100.00,Completed,Usha Paruchuri
