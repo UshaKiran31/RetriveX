@@ -252,7 +252,8 @@ def chat_stream(
                     if is_tabular_response:
                         try:
                             tabular_data = json.loads(full[len("__TABULAR__"):])
-                            display_content = f"[Tabular result from {tabular_data.get('source', 'file')}]"
+                            # Use summary if available, fallback to generic name
+                            display_content = tabular_data.get('summary') or f"[Tabular result from {tabular_data.get('source', 'file')}]"
                         except Exception:
                             pass
 

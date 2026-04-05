@@ -5,9 +5,8 @@ export function SourcesDropdown({ sources = [] }) {
   const [dropdownOpen, setDropdownOpen] = useState(true)
   // Which source card is expanded
   const [expandedSourceId, setExpandedSourceId] = useState(null)
-  // Selected image viewer state
-  const [selectedImage, setSelectedImage] = useState(null)
-  const [imageIndex, setImageIndex] = useState(0)
+  const [selectedItem, setSelectedItem] = useState(null)
+  const [itemIndex, setItemIndex] = useState(0)
   const [zoom, setZoom] = useState(1)
 
   // Normalize data
@@ -26,13 +25,16 @@ export function SourcesDropdown({ sources = [] }) {
   }, [sources])
 
   const thumbnails = useMemo(() => {
-    const imgs = []
+    const items = []
     for (const s of normalized.slice(0, 3)) {
       if (Array.isArray(s.images)) {
-        for (const img of s.images) imgs.push(img)
+        for (const img of s.images) items.push({ type: 'image', data: img })
+      }
+      if (Array.isArray(s.tables)) {
+        for (const table of s.tables) items.push({ type: 'table', data: table, source: s.file_name })
       }
     }
-    return imgs
+    return items
   }, [normalized])
 
   const total = normalized.length
@@ -42,44 +44,44 @@ export function SourcesDropdown({ sources = [] }) {
     setExpandedSourceId(prev => (prev === id ? null : id))
   }
 
-  // Image modal helpers
-  const openImage = (startIdx) => {
-    setSelectedImage(thumbnails[startIdx])
-    setImageIndex(startIdx)
+  // Modal helpers
+  const openItem = (startIdx) => {
+    setSelectedItem(thumbnails[startIdx])
+    setItemIndex(startIdx)
     setZoom(1)
     document.body.style.overflow = 'hidden'
   }
-  const closeImage = () => {
-    setSelectedImage(null)
+  const closeItem = () => {
+    setSelectedItem(null)
     document.body.style.overflow = ''
   }
-  const nextImage = () => {
+  const nextItem = () => {
     if (!thumbnails.length) return
-    const idx = (imageIndex + 1) % thumbnails.length
-    setImageIndex(idx)
-    setSelectedImage(thumbnails[idx])
+    const idx = (itemIndex + 1) % thumbnails.length
+    setItemIndex(idx)
+    setSelectedItem(thumbnails[idx])
     setZoom(1)
   }
-  const prevImage = () => {
+  const prevItem = () => {
     if (!thumbnails.length) return
-    const idx = (imageIndex - 1 + thumbnails.length) % thumbnails.length
-    setImageIndex(idx)
-    setSelectedImage(thumbnails[idx])
+    const idx = (itemIndex - 1 + thumbnails.length) % thumbnails.length
+    setItemIndex(idx)
+    setSelectedItem(thumbnails[idx])
     setZoom(1)
   }
 
   // Close on ESC
   useEffect(() => {
     const onKey = (e) => {
-      if (e.key === 'Escape') closeImage()
-      if (e.key === 'ArrowRight') nextImage()
-      if (e.key === 'ArrowLeft') prevImage()
+      if (e.key === 'Escape') closeItem()
+      if (e.key === 'ArrowRight') nextItem()
+      if (e.key === 'ArrowLeft') prevItem()
       if (e.key === '+' || e.key === '=') setZoom(z => Math.min(3, z + 0.2))
       if (e.key === '-') setZoom(z => Math.max(0.4, z - 0.2))
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [imageIndex, thumbnails.length])
+  }, [itemIndex, thumbnails.length])
 
   return (
     <div className="srcDrop">
@@ -136,45 +138,69 @@ export function SourcesDropdown({ sources = [] }) {
             </div>
             <div
               className={`srcItemContent ${expandedSourceId === s.id ? 'open' : ''}`}
-              style={{ maxHeight: expandedSourceId === s.id ? 320 : 0 }}
+              style={{ maxHeight: expandedSourceId === s.id ? 1000 : 0 }}
             >
               <div className="srcChunkTitle">Chunk Content</div>
               <div className="srcChunkBox">{s.text}</div>
+              {s.tables && s.tables.length > 0 && (
+                <div className="srcTables">
+                  <div className="srcChunkTitle">Tables</div>
+                  {s.tables.map((html, i) => (
+                    <div key={i} className="srcTableWrap" dangerouslySetInnerHTML={{ __html: html }} />
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
 
         {thumbnails.length > 0 && (
           <div className="thumbGrid">
-            {thumbnails.map((img, i) => (
+            {thumbnails.map((item, i) => (
               <button
-                key={`${img}-${i}`}
-                className="thumb"
-                title="Open image"
-                onClick={() => openImage(i)}
+                key={`${item.type}-${i}`}
+                className={`thumb ${item.type === 'table' ? 'tableThumb' : ''}`}
+                title={`Open ${item.type}`}
+                onClick={() => openItem(i)}
               >
-                <img src={img} alt="thumbnail" />
+                {item.type === 'image' ? (
+                  <img src={item.data} alt="thumbnail" />
+                ) : (
+                  <div className="tableThumbnail">
+                    <div className="tableIcon">📊</div>
+                    <div className="tableText">Table</div>
+                  </div>
+                )}
               </button>
             ))}
           </div>
         )}
       </div>
 
-      {selectedImage && (
-        <div className="imgModalOverlay" onClick={closeImage}>
-          <div className="imgModal" onClick={(e) => e.stopPropagation()}>
-            <img
-              src={selectedImage}
-              alt="preview"
-              style={{ transform: `scale(${zoom})` }}
-            />
+      {selectedItem && (
+        <div className="imgModalOverlay" onClick={closeItem}>
+          <div className={`imgModal ${selectedItem.type === 'table' ? 'tableModal' : ''}`} onClick={(e) => e.stopPropagation()}>
+            {selectedItem.type === 'image' ? (
+              <img
+                src={selectedItem.data}
+                alt="preview"
+                style={{ transform: `scale(${zoom})` }}
+              />
+            ) : (
+              <div className="modalTableContainer">
+                <div className="modalTableScroll">
+                   <div className="modalTableSource">📊 Source: {selectedItem.source}</div>
+                   <div className="modalTableContent" dangerouslySetInnerHTML={{ __html: selectedItem.data }} />
+                </div>
+              </div>
+            )}
             <div className="imgControls">
               <button onClick={() => setZoom(z => Math.max(0.4, z - 0.2))} title="Zoom out">−</button>
               <button onClick={() => setZoom(z => Math.min(3, z + 0.2))} title="Zoom in">+</button>
             </div>
-            <button className="imgNav left" onClick={prevImage} title="Previous">‹</button>
-            <button className="imgNav right" onClick={nextImage} title="Next">›</button>
-            <button className="imgClose" onClick={closeImage} title="Close">✕</button>
+            <button className="imgNav left" onClick={prevItem} title="Previous">‹</button>
+            <button className="imgNav right" onClick={nextItem} title="Next">›</button>
+            <button className="imgClose" onClick={closeItem} title="Close">✕</button>
           </div>
         </div>
       )}

@@ -19,7 +19,18 @@ export function CreateNotebookPage({ token }) {
             window.location.hash = `#/notebooks/${res.data.id}`
         } catch (e) {
             console.error(e)
-            alert("Error uploading files")
+            const detail = e.response?.data?.detail
+            if (detail && typeof detail === 'string') {
+                if (detail.toLowerCase().includes('unsupported file type')) {
+                    alert("Failed to upload files. Unsupported file type")
+                } else if (e.response?.status === 413 || detail.toLowerCase().includes('too large')) {
+                    alert("Failed to upload: File is too large (max 25MB)")
+                } else {
+                    alert("Error uploading files")
+                }
+            } else {
+                alert("Error uploading files")
+            }
         }
     }
 

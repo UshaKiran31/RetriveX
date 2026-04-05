@@ -47,14 +47,18 @@ def _ask_ollama_for_code(columns: list, question: str, model: str = "llama3.2:3b
 def _ask_ollama_for_summary(question: str, result_text: str, model: str = "llama3.2:3b") -> str:
     """Ask the LLM to produce a nicely formatted markdown answer."""
     user_msg = f"Question: {question}\n\nComputed result:\n{result_text}"
-    response = ollama.chat(
-        model=model,
-        messages=[
-            {"role": "system", "content": _SUMMARY_SYSTEM},
-            {"role": "user", "content": user_msg},
-        ],
-    )
-    return response["message"]["content"].strip()
+    try:
+        response = ollama.chat(
+            model=model,
+            messages=[
+                {"role": "system", "content": _SUMMARY_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+        )
+        return response["message"]["content"].strip()
+    except Exception as e:
+        print(f"Error generating tabular summary: {e}")
+        return f"The computed result is: **{result_text}**"
 
 
 def _df_to_result(df: pd.DataFrame, code: str) -> dict:

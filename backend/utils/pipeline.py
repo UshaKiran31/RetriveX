@@ -357,8 +357,8 @@ def process_document(file_path: str, project_id: int, document_id: int = None):
                 "content": content["text"],
                 "metadata": {"page": getattr(getattr(chunk, "metadata", {}), "page_number", None)},
             }
-            if content.get("tables"): entry["table_html"] = content["tables"][0]
-            if content.get("images"): entry["image_url"] = f"data:image/png;base64,{content['images'][0]}"
+            if content.get("tables"): entry["tables_html"] = content["tables"]
+            if content.get("images"): entry["images_base64"] = content["images"]
             chunks_data.append(entry)
             total_chars += len(content["text"])
         with open(os.path.join(chunks_dir, f"document_{document_id}.json"), "w") as f:
@@ -429,21 +429,29 @@ def ask_question(project_id: int, question: str, model: str = "llama3.2:3b"):
                     # Fall through to RAG silently
                     break
                 elif result["type"] == "table":
+                    summary = result.get("summary", "")
+                    if not summary:
+                        summary = f"I found some data in **{meta['filename']}** that matches your query."
+                    
                     payload = json.dumps({
                         "tabular_result": True,
                         "columns": result.get("columns", []),
                         "data": result["data"],
-                        "summary": result.get("summary", ""),
+                        "summary": summary,
                         "source": meta["filename"],
                         "code": result.get("code", ""),
                     })
                     yield f"__TABULAR__{payload}"
                     return
                 else:
+                    summary = result.get("summary")
+                    if not summary:
+                        summary = f"The answer is **{result['data']}** (found in {meta['filename']})"
+                    
                     payload = json.dumps({
                         "tabular_result": True,
                         "scalar": True,
-                        "summary": result.get("summary") or result["data"],
+                        "summary": summary,
                         "raw": result["data"],
                         "source": meta["filename"],
                         "code": result.get("code", ""),

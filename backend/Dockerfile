@@ -32,6 +32,6 @@ RUN mkdir -p data/uploads data/vector_db logs models /root/.cache/whisper
 # Pre-download Whisper base model at build time so it's available offline at runtime
 RUN python -c "import whisper; whisper.load_model('base')"
 
-EXPOSE 8000
+EXPOSE 8001
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8001"]

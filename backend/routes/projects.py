@@ -12,12 +12,9 @@ from schemas import ProjectCreate, ProjectRead, ProjectListItem, ProjectListResp
 from utils.pipeline import process_document, process_tabular_document, process_audio_document, process_image_document, is_audio, is_image
 from utils.loaders import partition_document, is_tabular
 from utils.chunking import create_chunks_by_title, separate_content_types
+from config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB
 
 router = APIRouter(prefix="/projects", tags=["projects"])
-
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".csv", ".xlsx", ".xls",
-                      ".mp3", ".mp4", ".wav", ".m4a", ".ogg", ".flac", ".webm", ".aac", ".wma",
-                      ".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".gif", ".webp"}
 
 def _ext(filename: str) -> str:
     return os.path.splitext(filename or "")[1].lower()
@@ -516,6 +513,16 @@ def upload_document(
             detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
         )
 
+    # Check file size
+    file.file.seek(0, os.SEEK_END)
+    file_size = file.file.tell()
+    file.file.seek(0)
+    if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"File too large ({file_size / (1024*1024):.1f}MB). Maximum size allowed is {MAX_FILE_SIZE_MB}MB."
+        )
+
     project = db.execute(select(Project).where(Project.id == project_id, Project.user_id == user_id)).scalar_one_or_none()
     if not project:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Project not found")
@@ -527,7 +534,7 @@ def upload_document(
 
     try:
         with open(file_path, "wb") as f:
-            f.write(file.file.read())
+            shutil.copyfileobj(file.file, f)
     finally:
         file.file.close()
 

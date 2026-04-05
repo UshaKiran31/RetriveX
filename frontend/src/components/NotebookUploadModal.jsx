@@ -73,6 +73,7 @@ export function NotebookUploadModal({ onClose, onUpload }) {
                         type="file" 
                         id="fileInput" 
                         multiple 
+                        accept=".pdf,.docx,.doc,.csv,.xlsx,.xls,.mp3,.mp4,.wav,.m4a,.ogg,.flac,.webm,.aac,.wma,.png,.jpg,.jpeg,.bmp,.tiff,.tif,.gif,.webp" 
                         style={{display: 'none'}} 
                         onChange={handleFileSelect} 
                     />

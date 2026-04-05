@@ -55,7 +55,18 @@ export function KnowledgeBasePanel({ projectId, documents, setDocuments, collaps
       setDocuments(res.data || [])
     } catch (error) {
       console.error('Upload failed:', error)
-      setUploadError('Failed to upload files.')
+      const detail = error.response?.data?.detail
+      if (detail && typeof detail === 'string') {
+        if (detail.toLowerCase().includes('unsupported file type')) {
+          setUploadError(`Failed to upload files. Unsupported file type`)
+        } else if (error.response?.status === 413 || detail.toLowerCase().includes('too large')) {
+          setUploadError(`Failed to upload: File is too large (max 25MB)`)
+        } else {
+          setUploadError('Failed to upload files.')
+        }
+      } else {
+        setUploadError('Failed to upload files.')
+      }
       setDocuments(prev => prev.filter(doc => !doc.id?.toString().startsWith('temp-')))
     }
   }
@@ -118,7 +129,13 @@ export function KnowledgeBasePanel({ projectId, documents, setDocuments, collaps
             </div>
             <div>Drag & Drop or Click to upload files</div>
             <div style={{ fontSize: '11px', opacity: 0.6, marginTop: 4 }}>PDF, DOCX, CSV, XLSX, MP3, MP4, WAV, PNG, JPG…</div>
-            <input type="file" multiple accept=".pdf,.docx,.doc,.csv,.xlsx,.xls,.mp3,.mp4,.wav,.m4a,.ogg,.flac,.webm,.aac,.wma,.png,.jpg,.jpeg,.bmp,.tiff,.gif,.webp" onChange={onDrop} style={{ display: 'none' }} />
+            <input 
+              type="file" 
+              multiple 
+              accept=".pdf,.docx,.doc,.csv,.xlsx,.xls,.mp3,.mp4,.wav,.m4a,.ogg,.flac,.webm,.aac,.wma,.png,.jpg,.jpeg,.bmp,.tiff,.tif,.gif,.webp" 
+              onChange={onDrop} 
+              style={{ display: 'none' }} 
+            />
           </label>
 
           {uploadError && <div className="error-message" style={{ color: 'red', marginTop: 10 }}>{uploadError}</div>}
@@ -149,6 +166,11 @@ export function KnowledgeBasePanel({ projectId, documents, setDocuments, collaps
                     )}
                     <span className="fileSize">{i.size || ''}</span>
                   </div>
+                  {i.status?.toLowerCase() === 'failed' && i.error_message && (
+                    <div className="fileErrorText" title={i.error_message}>
+                      {i.error_message.split('\n')[0]}
+                    </div>
+                  )}
                 </div>
                 <div className={`fileStatus ${i.status?.toLowerCase() === 'processing' ? 'fileStatusProcessing' : i.status?.toLowerCase() === 'failed' ? 'fileStatusFailed' : ''}`}>
                   {i.status || 'Completed'}

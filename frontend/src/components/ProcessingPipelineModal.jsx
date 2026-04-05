@@ -64,8 +64,8 @@ export function ProcessingPipelineModal({ open, onClose, document, projectId }) 
       const data = raw.map(c => {
         const types = Array.from(new Set([
           ...(Array.isArray(c.types) ? c.types : (c.type ? [c.type] : [])),
-          ...(c.image_url ? ['image'] : []),
-          ...(c.table_html ? ['table'] : []),
+          ...(c.image_url || (Array.isArray(c.images_base64) && c.images_base64.length > 0) ? ['image'] : []),
+          ...(c.table_html || (Array.isArray(c.tables_html) && c.tables_html.length > 0) ? ['table'] : []),
           ...(c.content ? ['text'] : []),
         ].map(t => (t || '').toLowerCase()))).filter(Boolean);
         return { ...c, types, type: c.type || (types[0] || 'text') };
@@ -597,6 +597,20 @@ export function ProcessingPipelineModal({ open, onClose, document, projectId }) 
           <button className="pipelineCloseBtn" onClick={onClose}>✕</button>
         </div>
 
+        {document?.status?.toLowerCase() === 'failed' && (
+          <div className="pipelineErrorBanner">
+            <div className="pipelineErrorHeader">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              Processing Failed
+            </div>
+            <div className="pipelineErrorBody">
+              {document.error_message || 'An unknown error occurred during processing.'}
+            </div>
+          </div>
+        )}
+
         <div className="pipelineTabs">
           {tabs.map(tab => (
             <button 
@@ -630,18 +644,30 @@ export function ProcessingPipelineModal({ open, onClose, document, projectId }) 
                 )}
                 <div className="inspectorLabel">Content</div>
                 <div className="inspectorBody">{selectedChunk.content}</div>
-                {selectedChunk.image_url && (
+                {(selectedChunk.image_url || (Array.isArray(selectedChunk.images_base64) && selectedChunk.images_base64.length > 0)) && (
                   <div className="inspectorMedia">
-                    <div className="inspectorLabel">Images (1)</div>
+                    <div className="inspectorLabel">Images ({selectedChunk.image_url ? 1 : selectedChunk.images_base64.length})</div>
                     <div className="inspectorImageContainer">
-                      <img src={selectedChunk.image_url} alt="Extracted content" />
+                      {selectedChunk.image_url ? (
+                        <img src={selectedChunk.image_url} alt="Extracted content" />
+                      ) : (
+                        selectedChunk.images_base64.map((b64, i) => (
+                          <img key={i} src={`data:image/png;base64,${b64}`} alt={`Extracted content ${i + 1}`} style={{ marginBottom: '8px' }} />
+                        ))
+                      )}
                     </div>
                   </div>
                 )}
-                {selectedChunk.table_html && (
+                {(selectedChunk.table_html || (Array.isArray(selectedChunk.tables_html) && selectedChunk.tables_html.length > 0)) && (
                   <div className="inspectorMedia">
                     <div className="inspectorLabel">Table Data</div>
-                    <div className="inspectorTableContainer" dangerouslySetInnerHTML={{ __html: selectedChunk.table_html }} />
+                    {selectedChunk.table_html ? (
+                      <div className="inspectorTableContainer" dangerouslySetInnerHTML={{ __html: selectedChunk.table_html }} />
+                    ) : (
+                      selectedChunk.tables_html.map((html, i) => (
+                        <div key={i} className="inspectorTableContainer" dangerouslySetInnerHTML={{ __html: html }} style={{ marginBottom: '16px' }} />
+                      ))
+                    )}
                   </div>
                 )}
               </div>

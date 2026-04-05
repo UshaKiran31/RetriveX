@@ -9,6 +9,7 @@ import re
 
 from database import Database
 import config
+from config import ALLOWED_EXTENSIONS, MAX_FILE_SIZE_MB
 from routes.projects import router as projects_router, get_current_user_dep
 from routes.conversations import router as conversations_router, get_current_user_dep as get_current_user_conv_dep
 import ollama
@@ -344,6 +345,24 @@ async def create_notebook(
     saved_files = []
     
     if files:
+        for file in files:
+            ext = os.path.splitext(file.filename or "")[1].lower()
+            if ext not in ALLOWED_EXTENSIONS:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"
+                )
+            
+            # Check file size
+            file.file.seek(0, os.SEEK_END)
+            file_size = file.file.tell()
+            file.file.seek(0)
+            if file_size > MAX_FILE_SIZE_MB * 1024 * 1024:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File '{file.filename}' is too large ({file_size / (1024*1024):.1f}MB). Max allowed: {MAX_FILE_SIZE_MB}MB"
+                )
+        
         # Create uploads directory
         upload_dir = f"uploads/{username}/{new_id}"
         os.makedirs(upload_dir, exist_ok=True)

@@ -12,6 +12,7 @@ import zipfile
 from typing import List
 
 from unstructured.partition.docx import partition_docx
+from unstructured.partition.doc import partition_doc
 from unstructured.documents.elements import Image as UnstructuredImage, ElementMetadata
 
 
@@ -21,6 +22,9 @@ def _extract_images_from_docx(file_path: str) -> List[str]:
     a list of base64-encoded strings.
     """
     images_b64 = []
+    if not zipfile.is_zipfile(file_path):
+        return images_b64
+        
     try:
         with zipfile.ZipFile(file_path, "r") as z:
             for name in z.namelist():
@@ -47,24 +51,43 @@ def _make_image_element(b64: str, page_number: int = None) -> UnstructuredImage:
 
 def load(file_path: str):
     """
-    Partition a DOCX file and append extracted images as Image elements.
+    Partition a DOCX or DOC file.
     Returns a combined list of unstructured elements.
     """
-    elements = partition_docx(
-        filename=file_path,
-        infer_table_structure=True,
-    )
+    ext = os.path.splitext(file_path)[1].lower()
+    
+    if ext == ".doc":
+        try:
+            # Note: partition_doc requires libreoffice or pandoc installed in the environment
+            elements = partition_doc(
+                filename=file_path,
+                infer_table_structure=True,
+            )
+        except Exception as e:
+            print(f"Error partitioning legacy .doc file: {e}")
+            # Fallback to partition_docx in case it's actually a docx with a doc extension
+            try:
+                elements = partition_docx(filename=file_path, infer_table_structure=True)
+            except Exception:
+                raise ValueError(f"Failed to process .doc file. Legacy .doc files require LibreOffice/Pandoc. Error: {e}")
+    else:
+        elements = partition_docx(
+            filename=file_path,
+            infer_table_structure=True,
+        )
 
-    images_b64 = _extract_images_from_docx(file_path)
-    if images_b64:
-        # Try to guess a page number from the last text element
-        last_page = None
-        for el in reversed(elements):
-            pn = getattr(getattr(el, "metadata", None), "page_number", None)
-            if pn is not None:
-                last_page = pn
-                break
-        for b64 in images_b64:
-            elements.append(_make_image_element(b64, page_number=last_page))
+    # Image extraction only works for modern .docx (ZIP format)
+    if ext == ".docx" or zipfile.is_zipfile(file_path):
+        images_b64 = _extract_images_from_docx(file_path)
+        if images_b64:
+            # Try to guess a page number from the last text element
+            last_page = None
+            for el in reversed(elements):
+                pn = getattr(getattr(el, "metadata", None), "page_number", None)
+                if pn is not None:
+                    last_page = pn
+                    break
+            for b64 in images_b64:
+                elements.append(_make_image_element(b64, page_number=last_page))
 
     return elements

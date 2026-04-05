@@ -18,7 +18,7 @@ services:
       dockerfile: Dockerfile
     container_name: retrievex-backend
     ports:
-      - "8000:8000"
+      - "8001:8001"
     env_file:
       - .env
     environment:
@@ -37,7 +37,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        - VITE_API_URL=http://34.47.221.36:8000
+        - VITE_API_URL=http://localhost:8001
     container_name: retrievex-frontend
     ports:
       - "3000:80"

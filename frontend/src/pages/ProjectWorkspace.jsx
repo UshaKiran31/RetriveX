@@ -72,7 +72,12 @@ export function ProjectWorkspace({ id }) {
   const fetchConversations = async () => {
     try {
       const res = await api.get(`/projects/${id}/conversations`)
-      setChats(res.data.conversations || [])
+      const convs = res.data.conversations || []
+      setChats(convs)
+      // Pick first chat by default if none active
+      if (convs.length > 0 && !activeChat) {
+        setActiveChat(convs[0].id)
+      }
     } catch (error) {
       console.error('Failed to fetch conversations:', error)
     }
